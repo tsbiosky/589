@@ -40,7 +40,7 @@ int TCPclient(int port)
     if(status < 0)
     {
         cout<<"Error connecting to socket!"<<endl; //break; 
-	return 0;
+    return 0;
     }
     cout << "Connected to the server!" << endl;
     int bytesRead, bytesWritten = 0;
@@ -48,16 +48,24 @@ int TCPclient(int port)
     gettimeofday(&start1, NULL);
     while(1)
     {
+
+  
         cout << ">";
         string data;
         getline(cin, data);
         memset(&msg, 0, sizeof(msg));//clear the buffer
         strcpy(msg, data.c_str());
+
+        // JUST FOR TEST Commands:
+        if(!strcmp(msg, "AUTHOR")){
+            cout << "I, Foad Hajiaghajani Memar, have read and understood the course academic integrity policy." << endl;
+            cout << "I, Junxuan Huang, have read and understood the course academic integrity policy." << endl;
+        }else{
         if(data == "exit")
         {
             send(clientSd, (char*)&msg, strlen(msg), 0);
             //break;
-		return 0;
+        return 0;
         }
         bytesWritten += send(clientSd, (char*)&msg, strlen(msg), 0);
         cout << "Awaiting server response..." << endl;
@@ -67,9 +75,11 @@ int TCPclient(int port)
         {
             cout << "Server has quit the session" << endl;
             //break;
-		return 0;
+        return 0;
         }
+
         cout << "Server: " << msg << endl;
+        }
     }
     gettimeofday(&end1, NULL);
     close(clientSd);
@@ -85,11 +95,11 @@ int TCPclient(int port)
 
 
 //Server side
+// INET_PTON
+
 
 int TCPserver(int port)
 {
-
-
     //buffer to send and receive messages with
     char msg[1500];
      
@@ -181,30 +191,29 @@ int TCPserver(int port)
     cout << "Connection closed..." << endl;
     return 0;   
 }
-
+}
 
 
 
 //Chat Application
 int main(int argc, char *argv[])
 {
-	if(argc!=3) {
+    if(argc!=3) {
         cerr << "Need valid s/c and port number arguments\n" << endl; exit(0);
-	}
-	//char *serverIp = argv[1]; 
-	int port = atoi(argv[2]);
-	char s[] = "s";
-	char c[] = "c";
+    }
+    //char *serverIp = argv[1]; 
+    int port = atoi(argv[2]);
+    char s[] = "s";
+    char c[] = "c";
 
-	if(strcmp (argv[1],c) == 0) {
-	TCPclient(port);
-	}
-	if(strcmp (argv[1],s) == 0){
-	TCPserver(port);
-	}else{
+    if(strcmp (argv[1],c) == 0) {
+    TCPclient(port);
+    }
+    if(strcmp (argv[1],s) == 0){
+    TCPserver(port);
+    }else{
         cerr << "Invalid c/s argument\n" << endl; exit(0);
-	}	 
-	return 0;
+    }    
+    return 0;
 }
-
 
