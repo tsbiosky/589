@@ -23,14 +23,12 @@
 #define EMPTY_STRING ""
 //#include <WinSock2.h>
 int status=0;
-//#include "../include/logger.h"
-//#include "../include/Client.h"
-//#include "../include/Server.h"
 using namespace std;
 //Client side
 fd_set read_fd, all_fd;
 int server_sockfd;
 int max_fd;
+vector<vector<string> > client_list;
 //Server side
 //Chat Application
 void print_SUCCESS(std::string command) {
@@ -72,6 +70,28 @@ void SplitString(const string& s, vector<string>& v, const string& c)
 	}
 	if(pos1 != s.length())
 		v.push_back(s.substr(pos1));
+}
+
+bool send_buff(int sock_fd, const char *buf, unsigned long size) {
+	unsigned long total = 0;
+	unsigned long bytes_remaining = size;
+	ssize_t n = 0;
+	std::cout << "send " << size << " bytes: " << buf << std::endl;
+
+	while (total < size) {
+		n = send(sock_fd, buf + total, bytes_remaining, 0);
+		if (n == -1) { break; }
+		total += n;
+		bytes_remaining -= n;
+	}
+
+	return n != -1;
+}
+bool send_string(int sock_fd, const std::string &data) {
+	if (data.size() == 0) {
+		return false;
+	}
+	return send_buff(sock_fd, data.c_str(), data.length());
 }
 bool bind_listen_on(int *sock_fd, const char *port) {
 	struct addrinfo *result, *temp;
@@ -191,11 +211,11 @@ string get_external_ip(void) {
 void command_AUTHOR(void) {
 	std::string command = "AUTHOR";
 	print_SUCCESS(command);
-	cse4589_print_and_log("I, %s, have read an understood the course academic integrity policy.\n",ubit);
+	cse4589_print_and_log("I, %s, have read and understood the course academic integrity policy.\n",ubit);
 	print_END(command);
 }
 void command_IP(void) {
-	cout<<"IP"<<endl;
+	//cout<<"IP"<<endl;
 	std::string command = "IP";
 	string ip =get_external_ip();
 	if (ip != EMPTY_STRING) {
@@ -210,28 +230,39 @@ void command_IP(void) {
 void command_PORT(void) {
 	cout<<"port"<<endl;
 }
-void command_LIST(void) {
+void command_LIST(vector<vector<string> > &client_list) {
 	//command_LIST(client_list);
+	std::string command="LIST";
+	cse4589_print_and_log("[%s:SUCCESS]\n", command.c_str());
+	for (int i = 0; i < client_list.size(); i++){
+
+		cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i+1, client_list[i][0].c_str(), client_list[i][1].c_str(), str2int(client_list[i][2]));
+
+
+	}
+	cse4589_print_and_log("[%s:END]\n", command.c_str());
 }
 //common commends
-void command_LOGIN(const std::string &server_ip, const std::string &server_port) {
+char buff_login[100];
+char* command_LOGIN(const std::string &server_ip, const std::string &server_port,int port,vector<vector<string> > &client_list) {
 	std::string command = "LOGIN";
-
+	buff_login[0]='\0';
 	sockaddr_in addrSrv;
 	bzero((char*)&addrSrv, sizeof(addrSrv));
 	addrSrv.sin_family = AF_INET;
-	int tmp_port;
-	tmp_port=str2int(server_port);
-	addrSrv.sin_port = htons(tmp_port);
+	addrSrv.sin_port = htons(port);
 	inet_pton(AF_INET, server_ip.c_str(), &(addrSrv.sin_addr));
 	//addrSrv.sin_addr.s_addr = inet_addr(server_ip);
 	int clientSd = socket(AF_INET, SOCK_STREAM, 0);
 	//创建套接字
-
+	bind(clientSd,(struct sockaddr *)&addrSrv,sizeof(struct sockaddr));
+	//bind_listen_on(&clientSd,server_port.c_str());
 	//向服务器发出连接请求
-	char buff[256];
+	//char buff[100];
 	if(connect_to(&clientSd, server_ip.c_str(), server_port.c_str(), SOCK_STREAM)==false){
 		printf("Connect failed\n");
+		print_ERROR_END(command);
+		return NULL;
 	}
 	/*if(connect(clientSd, (struct  sockaddr*)&addrSrv, sizeof(addrSrv)) == -1){
 		printf("Connect failed\n");
@@ -240,10 +271,17 @@ void command_LOGIN(const std::string &server_ip, const std::string &server_port)
 	}*/else
 	{   cout<<"connect successful"<<endl;
 		//接收数据
+		send_string(clientSd, int2str(port));
 		print_SUCCESS(command);
 		print_END(command);
-		recv(clientSd, buff, sizeof(buff), 0);
-		printf("%s\n", buff);
+		//while (FD_ISSET(clientSd, &read_fd)){
+			recv(clientSd,buff_login, sizeof(buff_login), 0);
+			//cse4589_print_and_log("%s",buff);
+			//cout<<buff<<endl;
+			//string temp(buff);
+			return buff_login;
+		//}
+		//printf("%s\n", buff);
 	}
 
 }
@@ -314,10 +352,7 @@ void select_commend_server(string commend_str){
 	} else if (v.size() == 1 && v[0] == "PORT") {
 		command_PORT();
 
-	} else if (v.size() == 1 && v[0] == "LIST") {
-		command_LIST();
-
-	} else if (v.size() == 1 && v[0] == "STATISTICS") {
+	}  else if (v.size() == 1 && v[0] == "STATISTICS") {
 		command_STATISTICS();
 
 	} else if (v.size() == 2 && v[0] == "BLOCKED") {
@@ -340,13 +375,7 @@ void select_commend_client(string commend_str) {
 	} else if (v.size() == 1 && v[0] == "PORT") {
 		command_PORT();
 
-	} else if (v.size() == 1 && v[0] == "LIST" && status == 1) {
-		command_LIST();
-
-	} else if (v.size() == 3 && v[0] == "LOGIN" && status == 0) {
-		command_LOGIN(v[1], v[2]);
-
-	} else if (v.size() == 1 && v[0] == "REFRESH" && status == 1) {
+	}  else if (v.size() == 1 && v[0] == "REFRESH" && status == 1) {
 		command_REFRESH();
 
 	} else if (v.size() >= 3 && v[0] == "SEND" && status == 1) {
@@ -375,10 +404,73 @@ void select_commend_client(string commend_str) {
 }
 
 void TCPclient (int port) {
+	vector<vector <string> > useless;
+	char *client_list;
 	while (true) {
 		string commend_str;
+
+		char *p1;
 		getline(cin,commend_str);
-		select_commend_client(commend_str);
+		std::vector <string> v;
+
+		SplitString(commend_str, v, " ");
+		if(commend_str=="PORT"){
+			print_SUCCESS(commend_str);
+			cse4589_print_and_log("PORT:%d\n", port);
+			print_END(commend_str);
+		}
+		else if (v.size() == 3 && v[0] == "LOGIN" && status == 0) {
+			//string temp;
+
+			client_list=command_LOGIN(v[1], v[2],port,useless);
+			cout<<client_list<<endl;
+			//std::vector <string> v;
+			//vector<string> vv;
+			cout<<"1"<<endl;
+			//v=strtok(temp,"?");
+			/*
+			for(int i=0;i<v.size();i++) {
+				//cout<<v[i]<<endl;
+				cout<<"2"<<endl;
+				SplitString(v[i], vv, " ");
+				for(int j=0;j<vv.size();j++){
+					cout<<vv[j]<<endl;
+				}
+				client_list.push_back(vv);
+				char * cstr = new char [vv[1].length()+1];
+				strcpy (cstr, vv[1].c_str());
+				//printf("%-5d\n",vv[0][0]);
+				//const char t[] = vv[1].data();
+				//char *p=vv[1].data();
+				printf("%s\n",cstr);
+				//printf("%-5d\n",str2int(vv[2]));
+				//printf("%-5d%-35s%-20s%-8d\n",)
+			}*/
+
+		}else if(commend_str=="LIST"){
+			p1=strtok(client_list,"?");
+			int i=0;
+
+
+			while(p1!=NULL){
+				i++;
+				char *p2;
+				char temp[]="";
+				strcpy(temp,p1);
+				p2=strtok(temp," ");
+				char *hostname=p2;
+				p2=strtok(NULL," ");
+				char *ip=p2;
+				p2=strtok(NULL," ");
+				int port=atoi(p2);
+				cse4589_print_and_log("%-5d%-35s%-20s%-8d\n", i, hostname, ip, port);
+				p1=strtok(NULL,"?");
+			}
+		}
+		else {
+
+			select_commend_client(commend_str);
+		}
 		//cout<<commend[0]<<endl;
 	}
 }
@@ -401,8 +493,8 @@ void TCPserver (int port){
 	int newfd;        // newly accept()ed socket descriptor
 	struct sockaddr_storage remoteaddr; // client address
 	socklen_t addrlen;
-
-	char buf[256];    // buffer for client data
+	fd_set all_fd;
+	//char buf[256];    // buffer for client data
 	int nbytes;
 
 	char remoteIP[INET6_ADDRSTRLEN];
@@ -462,18 +554,28 @@ void TCPserver (int port){
 
 	// keep track of the biggest file descriptor
 	fdmax = listener; // so far, it's this one
-
+	printf("/server: waiting for connections...\n");
 	// main loop
+	ssize_t bytes_read_count;
+	char buffer[100];
+	FD_SET(STDIN_FILENO, &master);
+	string commend_str;
 	for(;;) {
 		read_fds = master; // copy it
 		if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
 			perror("select");
 			exit(4);
 		}
+		//if (FD_ISSET(STDIN_FILENO, &read_fds)) {
+
+
+		//}
 
 		// run through the existing connections looking for data to read
 		for(i = 0; i <= fdmax; i++) {
-			if (FD_ISSET(i, &read_fds)) { // we got one!!
+
+			if (FD_ISSET(i, &read_fds)) {// we got one!!
+
 				if (i == listener) {
 					// handle new connections
 					addrlen = sizeof remoteaddr;
@@ -494,8 +596,35 @@ void TCPserver (int port){
 										 get_in_addr((struct sockaddr*)&remoteaddr),
 										 remoteIP, INET6_ADDRSTRLEN),
 							   newfd);
+						char host[NI_MAXHOST], service[NI_MAXSERV];
+						getnameinfo((struct sockaddr *) &remoteaddr,
+									addrlen, host, NI_MAXHOST,
+									service, NI_MAXSERV, NI_NUMERICSERV);
+						std::string ip = get_ip(remoteaddr);
+						std::string hostname = host;
+						recv(newfd, buffer, sizeof buffer, 0);
+						//int port = ((sockaddr_in *) &remoteaddr)->sin_port;
+						int port=str2int(buffer);
+						vector<string> temp;
+						temp.push_back(hostname);
+						temp.push_back(ip);
+						temp.push_back(int2str(port));
+						temp.push_back(int2str(newfd));
+						client_list.push_back(temp);
+						cout<<ip<<host<<port<<endl;
+
+					}//SENT LIST
+					for (int i = 0; i < client_list.size(); i++){
+						int child_fd = str2int(client_list[i][3]);
+						string send_str="?";
+						for (int j=0;j<client_list.size();j++){
+							send_str=send_str+client_list[j][0]+" "+client_list[j][1]+" "+client_list[j][2]+" ?";
+						}
+						send_string(child_fd,send_str);
 					}
-				} else {
+				}
+
+				/*else {
 					// handle data from a client
 					if ((nbytes = recv(i, buf, sizeof buf, 0)) <= 0) {
 						// got error or connection closed by client
@@ -521,9 +650,49 @@ void TCPserver (int port){
 							}
 						}
 					}
-				} // END handle data from client
-			} // END got new incoming connection
+				}// END handle data from client
+				*/  //do later
+			} // END got new input
+
+			for (int i = 0; i < client_list.size(); i++){
+				int child_fd = str2int(client_list[i][3]);
+				if (FD_ISSET(child_fd, &read_fd)){
+					memset(&buffer, 0, sizeof buffer);
+					if (recv(child_fd, buffer, sizeof buffer, 0) == 0) { // Check if closing
+						//client_list.exit(i);
+						close(child_fd);
+						std::cout << "CLOSE" << std::endl;
+
+					} else {  // handle events
+						std::cout << "client " << i << " " << std::endl;
+						std::cout << "receive: " << std::string(buffer) << std::endl;
+						std::string command_str = buffer;
+						//select_event(client_list.client_vector[i].ip, command_str);
+					}
+				}
+			}
+
 		} // END looping through file descriptors
+		cout<<"input command"<<endl;
+		getline(cin,commend_str);
+		if(commend_str=="PORT"){
+			print_SUCCESS(commend_str);
+			cse4589_print_and_log("PORT:%d\n", port);
+			print_END(commend_str);
+		}else if(commend_str=="IP"){
+			select_commend_server(commend_str);
+		} else if(commend_str=="AUTHOR"){
+			select_commend_server(commend_str);
+		}else{
+			int noting;
+			//store command and go next
+		}
+		if(commend_str=="LIST"){
+			command_LIST(client_list);
+		}else{
+			cout<<"command error"<<endl;
+		}
+		fflush(STDIN_FILENO);
 	} // END for(;;)--and you thought it would never end!
 
 
